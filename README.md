@@ -304,3 +304,7 @@ func main() {
 ## **Contributing**
 
 Contact us.
+
+## **license**
+
+This isn't something i expect to happen therefor i do not has policy for this yet
