@@ -60,23 +60,34 @@ func TestRegisteringTwice(t *testing.T) {
 }
 
 func TestHandler(t *testing.T) {
-	type EgReq struct{ relay.Req[int] }
+	r := relay.NewRelay(relay.NewConfigBuilder().Build())
+	type EgReq struct {
+		relay.Req[int]
+		EgArr []int // arrays are not composable
+	}
 	req := EgReq{}
 	expectedRes := 10
-	handler := func(req EgReq) (int, error) {
-		return expectedRes, nil
-	}
-
-	var r, err = relay.TryNewRelay(relay.NewConfigBuilder().Build())
-	if err != nil {
-		t.Errorf("unexpected error %s\n", err.Error())
-	}
-
+	handler := func(req EgReq) (int, error) { return expectedRes, nil }
 	relay.Register(r, handler)
+
+	type EgReq2 struct{ relay.Req[int] }
+	req2 := EgReq2{}
+	expectedRes2 := 11
+	handler2 := func(req EgReq2) (int, error) { return expectedRes2, nil }
+	relay.Register(r, handler2)
 
 	res, err := relay.Handle(r, req)
 	if res != expectedRes {
 		t.Errorf("unexpected response.\ngot %d\nexpected %d\n", res, expectedRes)
+	}
+
+	if err != nil {
+		t.Errorf("unexpected response error %s\n", err.Error())
+	}
+
+	res2, err := relay.Handle(r, req2)
+	if res2 != expectedRes2 {
+		t.Errorf("unexpected response.\ngot %d\nexpected %d\n", res2, expectedRes2)
 	}
 
 	if err != nil {

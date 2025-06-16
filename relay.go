@@ -3,6 +3,7 @@ package relay
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 )
 
@@ -35,8 +36,7 @@ func NewRelay(config Config) Relay {
 }
 
 func requestKey[Request Req[Response], Response any]() any {
-	var req Request
-	return req
+	return reflect.TypeFor[Request]()
 }
 
 var (
