@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ogiusek/relay"
+	"github.com/ogiusek/relay/v2"
 )
 
 func afterPanic() {
