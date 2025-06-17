@@ -1,310 +1,179 @@
-# **Relay Go Package**
+# `relay`
 
-This readme serves as a comprehensive guide to the relay Go package, explaining its interface, intended use cases, and how it enhances developer experience through flexibility.
+`github.com/ogiusek/relay`
 
-## **Introduction**
+The `relay` package provides a robust and flexible mechanism for decoupling communication concerns within your application. By enforcing upfront registration of handlers for specific request types, `relay` promotes good software design principles, enabling you to easily swap communication methods (e.g., HTTP, TCP, or even in-memory calls for backend/frontend in a single executable) without altering core business logic.
 
-The relay package provides a flexible and type-safe mechanism for dispatching and handling requests within your Go applications. It aims to simplify the process of defining request-response patterns and routing them to appropriate handlers, ultimately improving developer experience and code maintainability.
+## Features
 
-## **Why Use relay?**
+  * **Decoupled Communication:** Abstract away the underlying communication mechanism.
+  * **Strongly Typed Handlers:** Ensure type safety between requests and responses.
+  * **Explicit Registration:** Forces clear definition of how requests are handled.
+  * **Default Handler:** Provides a fallback for unhandled request types.
+  * **Composable Builder:** Allows for flexible and chained configuration.
 
-In many applications, especially those dealing with various types of messages, commands, or events, managing the dispatch of these `requests` to the correct `handlers` can become cumbersome. relay addresses this by offering:
+## Installation
 
-* **Type Safety:** By leveraging Go's generics, relay ensures that your requests and responses are strongly typed, reducing the likelihood of runtime errors and improving code readability.
-* **Clear Separation of Concerns:** It promotes a clear separation between the request definition, the handler logic, and the dispatch mechanism, leading to more modular and testable code.
-* **Enhanced Developer Experience:** The intuitive API allows developers to quickly define new request-response flows without boilerplate, focusing on the business logic rather than the plumbing.
-* **Flexibility:** With features like custom default handlers and explicit error handling, relay adapts to various application requirements and error management strategies.
-* **Centralized Request Handling:** It provides a central point for managing how different types of requests are processed, making it easier to reason about and debug your application's flow.
+To use `relay`, simply run:
 
-## **Core Concepts**
+```bash
+go get github.com/ogiusek/relay
+```
 
-The relay package is built around a few fundamental concepts:
+## Core Concepts
 
-### **Requests (Req)**
+At the heart of the `relay` package are two main components:
 
-A Request in relay is an interface that acts as a marker for your custom request types. It's designed to associate a specific request with its expected response type using Go generics.
+  * **`Builder`**: Used to construct and configure a `Relay` instance. It provides methods for registering handlers and setting a default handler.
+  * **`Relay`**: The operational component that dispatches requests to their registered handlers.
+
+### Requests and Responses
+
+The `relay` package uses a generic approach for requests and responses. Your request types must embed `relay.Req[Response]`, which serves as a marker to bind a request to its expected response type.
 
 ```go
-type Req[Response Res] interface {
-    // This method is never called; it's purely a marker to link
-    // a request type to its corresponding response type.
-    Response() Response
+type MyRequest struct {
+    relay.Req[MyResponse] // Binds MyRequest to MyResponse
+    // Your request fields here
+}
+
+type MyResponse struct {
+    // Your response fields here
 }
 ```
 
-**Example:**
-```go
-type EgRes struct {
-    Incremented int
-}
+## Usage
 
-type EgReq struct {
-    relay.Req[EgRes] // Links EgReq to EgRes
-    Value int
-}
-```
+Building and using a `Relay` typically involves these steps:
 
-By embedding `relay.Req[Response]`, you declare that EgReq is a request type and that its expected response is EgRes.
+1.  **Define your Request and Response types.**
+2.  **Create Handler Functions** for each request type.
+3.  **Use `NewBuilder()`** to start configuring your `Relay`.
+4.  **Register Handlers** using `Register`.
+5.  **Optionally set a `DefaultHandler`** for unhandled requests.
+6.  **Call `Build()`** to get your `Relay` instance.
+7.  **Handle requests** using the `Handle` method of the `Relay`.
 
-### **Responses (Res)**
+### Example
 
-Res is a simple interface representing any response type. Your custom response structs should implicitly satisfy this interface.
-
-```go
-type Res interface{}
-```
-
-**Example:**
-```go
-type EgRes struct {
-    ExampleField int
-}
-```
-
-### **Handlers (Handler)**
-
-A Handler is a function that takes a specific Request type and returns its corresponding Response type along with an error.
-```go
-type Handler[Request Req[Response], Response any] func(Request) (Response, error)
-```
-**Example:**
-
-```go
-func EgHandler(req EgReq) (EgRes, error) {
-    return EgRes{Incremented: req.Value + 1}, nil
-}
-```
-
-Handlers encapsulate the business logic for processing a particular type of request.
-
-### **The Relay Itself**
-
-The Relay (represented by \*relay) is the core component responsible for managing and dispatching requests to their registered handlers.
-
-* `TryNewRelay(config Config) (Relay, error)`: This constructor creates a new Relay instance. It can return `ErrInvalidConfig` if the provided configuration is not valid.
-
-* `NewRelay(config Config) Relay`: This constructor creates a new Relay instance. It wraps `TryNewRelay` and panics when it returns error.
-
-### **Configuration (Config)**
-
-The Config struct is used to configure a Relay instance. It allows for specifying a DefaultHandler, which is invoked if no specific handler is found for a given request type.
-
-* `NewConfig(defaultHandler DefaultHandler) Config`: Creates a new Config with a specified default handler.
-* `NewConfigBuilder() ConfigBuilder`: Provides a fluent API for constructing Config objects.
-
-```go
-type Config struct {
-    valid          bool
-    defaultHandler DefaultHandler
-}
-
-type DefaultHandler func(req any) (Res, error)
-```
-
-## **Getting Started**
-
-### **Creating a Relay Instance**
-
-You initialize a Relay using `TryNewRelay`, typically with a Config built via NewConfigBuilder.
-
-```go
-import (
-	"errors"
-	"fmt"
-	"github.com/ogiusek/relay"
-)
-
-func main() {
-    r, err := relay.TryNewRelay(relay.NewConfigBuilder().
-        DefaultHandler(func(req any) (relay.Res, error) {
-            fmt.Printf("No specific handler found for request: %v\n", req)
-            return nil, errors.New("unhandled request")
-        }).
-        Build(),
-    )
-    if err != nil {
-        panic(fmt.Sprintf("unexpected error creating relay: %s\n", err.Error()))
-    }
-    // ...
-}
-```
-
-### **Registering Handlers**
-
-Handlers are registered with the Relay to associate a specific request type with its processing logic.
-
-* `TryRegister[Request Req[Response], Response any](r *relay, handler Handler[Request, Response]) error`: Attempts to register a handler. It returns `ErrHandlerAlreadyExists` if a handler for the given request type is already registered. This is the recommended way to register handlers when you want to handle potential registration conflicts.
-* `Register[Request Req[Response], Response any](r *relay, handler Handler[Request, Response])`: Registers a handler. **This function can panic** if a handler for the given request type is already registered. Use TryRegister if you want to avoid panics.
-
-
-```go
-type EgRes struct {
-	Incremented int
-}
-
-type EgReq struct {
-	relay.Req[EgRes]
-	Value int
-}
-
-func EgHandler(req EgReq) (EgRes, error) {
-	return EgRes{Incremented: req.Value + 1}, nil
-}
-
-// ... inside main or a similar function
-relay.Register(r, EgHandler) // Panics if EgHandler is already registered for EgReq
-// OR
-// err := relay.TryRegister(r, EgHandler)
-// if err != nil {
-//     fmt.Printf("Failed to register handler: %s\n", err)
-// }
-```
-
-### **Handling Requests**
-
-Once handlers are registered, you can dispatch requests using the Handle function.
-
-* `Handle[Request Req[Response], Response any](r *relay, request Request) (Response, error)`: Dispatches the request to the appropriate registered handler and returns the Response or an error. If no specific handler is found, the DefaultHandler (if configured) will be invoked.
-
-```go
-req := EgReq{Value: 7}
-res, err := relay.Handle(r, req)
-if err != nil {
-    fmt.Printf("Error handling request: %s\n", err)
-} else {
-    fmt.Printf("Got incremented value: %d\n", res.Incremented) // Output: got incremented value: 8
-}
-```
-
-## **Error Handling**
-
-The relay package defines a few specific errors:
-
-* `ErrInvalidConfig`: Returned by `TryNewRelay` if the provided Config is not valid (e.g., if it wasn't created using NewConfig or NewConfigBuilder).
-* `ErrHandlerAlreadyExists`: Returned by TryRegister if you attempt to register a handler for a request type that already has a handler.
-* `ErrHandlerNotFound`: This is the default error returned by the default DefaultHandler provided by NewConfigBuilder if no specific handler is found for a request. You can customize the default handler to return a different error or behavior.
-
-Your custom handlers can return any error, which will be propagated back through the Handle function.
-
-## **Advanced Usage**
-
-### **Custom Default Handler**
-
-The ConfigBuilder allows you to define a custom DefaultHandler. This is particularly useful for implementing fallback logic, logging unhandled requests, or returning a generic error for unknown request types.
-
-```go
-r, err := relay.TryNewRelay(relay.NewConfigBuilder().
-    DefaultHandler(func(req any) (relay.Res, error) {
-        fmt.Printf("Received an unhandled request of type %T: %v\n", req, req)
-        // You could log this, send to a dead-letter queue, or return a specific error
-        return nil, errors.New("this type of request is not supported")
-    }).
-    Build(),
-)
-if err != nil {
-    panic(fmt.Sprintf("unexpected error %s\n", err.Error()))
-}
-```
-
-## **Example Usage**
-
-Here's a complete example demonstrating the usage of the relay package:
+Let's illustrate with a simple example:
 
 ```go
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/your-repo/relay" // Replace with your actual package path
+
+	"github.com/ogiusek/relay"
 )
 
-// Define a custom response type
-type EgRes struct {
-	Incremented int
-}
+// 1. Define Request and Response types
+type EgReq struct{ relay.Req[int] }
 
-// Define a custom request type that links to EgRes
-type EgReq struct {
-	relay.Req[EgRes] // Embedding relay.Req[EgRes] establishes the link
-	Value int
-}
-
-// Define a handler for EgReq
-func EgHandler(req EgReq) (EgRes, error) {
-	fmt.Printf("EgHandler received value: %d\n", req.Value)
-	return EgRes{Incremented: req.Value + 1}, nil
-}
-
-// Another example: a request that doesn't expect a specific response (nil Res)
-type PingReq struct {
-	relay.Req[relay.Res] // Use relay.Res directly if no specific response struct
-	Message string
-}
-
-func PingHandler(req PingReq) (relay.Res, error) {
-	fmt.Printf("PingHandler received message: %s\n", req.Message)
-	return nil, nil // No specific response struct, so return nil
-}
+// Custom error for demonstration
+var ErrCustomError = errors.New("a custom error occurred")
 
 func main() {
-	// 1. Create a Relay instance with a custom default handler
-	r, err := relay.TryNewRelay(relay.NewConfigBuilder().
-		DefaultHandler(func(req any) (relay.Res, error) {
-			fmt.Printf("Default handler: Unrecognized request received: %v\n", req)
-			return nil, errors.New("unsupported request type")
+	// 2. Create a handler function
+	handler := func(req EgReq) (int, error) {
+		fmt.Printf("Received request: %+v\n", req)
+		return 123, nil // Return some integer response
+	}
+
+	// 3-6. Build the Relay
+	r := relay.NewBuilder().
+		// Using Wrap for cleaner registration, especially with generics
+		Wrap(func(b relay.Builder) relay.Builder {
+			return relay.Register(b, handler)
 		}).
-		Build(),
-	)
+		// Set a default handler for requests without a specific handler
+		DefaultHandler(func(req any) (relay.Res, error) {
+			fmt.Printf("No handler found for request type: %T\n", req)
+			return nil, ErrCustomError
+		}).
+		Build()
+
+	// 7. Handle a request
+	payload := EgReq{} // Create an instance of your request
+	res, err := relay.Handle[EgReq, int](r, payload)
+
 	if err != nil {
-		panic(fmt.Sprintf("unexpected error during relay creation: %sn\", err.Error()))
+		fmt.Printf("Error handling request: %v\n", err)
+	} else {
+		fmt.Printf("Response: %d\n", res) // Output: Response: 123
 	}
 
-	// 2. Register handlers for specific request types
-	relay.Register(r, EgHandler)
-	relay.Register(r, PingHandler)
-
-	// 3. Create and handle a request for which a handler is registered (EgReq)
-	egRequest := EgReq{Value: 7}
-	// Demonstrate JSON encoding/decoding for a request (optional, but good for demonstrating data portability)
-	if bytes, err := json.Marshal(egRequest); err != nil {
-		panic(fmt.Sprintf("json marshal error: %s", err.Error()))
-	} else if err := json.Unmarshal(bytes, &egRequest); err != nil {
-		panic(fmt.Sprintf("json unmarshal error: %s", err.Error()))
-	}
-
-	egResponse, err := relay.Handle(r, egRequest)
+	// Example of an unhandled request
+	type UnhandledReq struct{ relay.Req[string] }
+	_, err = relay.Handle[UnhandledReq, string](r, UnhandledReq{})
 	if err != nil {
-		panic(fmt.Sprintf("error handling EgRequest: %s\n", err))
-	}
-	fmt.Printf("Handled EgRequest: got incremented value %d\n", egResponse.Incremented)
-
-	// 4. Create and handle another registered request (PingReq)
-	pingRequest := PingReq{Message: "Hello, Relay!"}
-	_, err = relay.Handle(r, pingRequest) // PingHandler returns nil for response
-	if err != nil {
-		panic(fmt.Sprintf("error handling PingRequest: %s\n", err))
-	}
-	fmt.Println("Handled PingRequest successfully.\n")
-
-	// 5. Create and handle an unregistered request to trigger the default handler
-	type UnregisteredReq struct {
-		relay.Req[relay.Res]
-		Data string
-	}
-	unregisteredRequest := UnregisteredReq{Data: "Some unknown data"}
-	_, err = relay.Handle(r, unregisteredRequest)
-	if err != nil {
-		fmt.Printf("Handled unregistered request, as expected: %s\n", err.Error())
+		fmt.Printf("Error handling unhandled request: %v\n", err) // Output: Error handling unhandled request: a custom error occurred
 	}
 }
 ```
 
-## **Contributing**
+### Explanation of Builder Methods
 
-Contact us.
+  * **`NewBuilder()`**: The constructor for `Builder`. It initializes the internal `relay` structure with an empty set of handlers and a default handler that returns `ErrHandlerNotFound`.
 
-## **license**
+    ```go
+    builder := relay.NewBuilder()
+    ```
 
-This isn't something i expect to happen therefor i do not has policy for this yet
+  * **`Wrap(wrapped func(Builder) Builder) Builder`**: This method allows for a more functional and composable way to extend the `Builder`'s configuration. It takes a function that accepts a `Builder` and returns a modified `Builder`. This is particularly useful for applying multiple registrations or complex configurations.
+
+    ```go
+    builder := relay.NewBuilder().
+        Wrap(func(b relay.Builder) relay.Builder {
+            return relay.Register(b, myHandler1)
+        }).
+        Wrap(func(b relay.Builder) relay.Builder {
+            return relay.Register(b, myHandler2)
+        })
+    ```
+
+  * **`DefaultHandler(handler DefaultHandler) Builder`**: Sets a global fallback handler for any request type that does not have a specific handler registered. If no `DefaultHandler` is set, the built `Relay` will use an internal default that returns `ErrHandlerNotFound`.
+
+    ```go
+    builder := relay.NewBuilder().
+        DefaultHandler(func(req any) (relay.Res, error) {
+            fmt.Printf("Fallback for: %T\n", req)
+            return nil, errors.New("no specific handler")
+        })
+    ```
+
+  * **`Register[Request Req[Response], Response any](b Builder, handler Handler[Request, Response]) Builder`**: Registers a handler for a specific request type. This function panics if:
+
+      * The `Builder` was not created using `NewBuilder()`.
+      * A handler for the given `Request` type has already been registered.
+        For non-panicking registration, consider implementing a `TryRegister` function within your application if needed.
+
+    ```go
+    type MyRequest struct{ relay.Req[string] }
+    myHandler := func(req MyRequest) (string, error) {
+        return "hello", nil
+    }
+    builder := relay.NewBuilder()
+    builder = relay.Register(builder, myHandler) // Directly register
+    ```
+
+  * **`Build() Relay`**: Finalizes the `Builder` configuration and returns a `Relay` instance ready to handle requests. This method also panics if the `Builder` was not created via `NewBuilder()`.
+
+    ```go
+    r := relay.NewBuilder().Build()
+    ```
+
+## Error Handling
+
+The `relay` package defines the following errors:
+
+  * **`ErrDidntUseCtor`**: Indicates that a `Builder` method was called on an uninitialized `Builder` instance (i.e., `NewBuilder()` was not used).
+  * **`ErrHandlerAlreadyExists`**: Signifies an attempt to register a handler for a request type that already has a handler.
+  * **`ErrHandlerNotFound`**: Returned by the default handler when no specific handler is found for a given request.
+
+It's important to note that `Register` and `Build` methods can `panic` under certain conditions. This design choice forces the client to define the `Relay` upfront and correctly, ensuring a predictable and stable state at runtime.
+
+## Contributing
+
+Contributions are welcome\! Please feel free to open issues or submit pull requests on the [GitHub repository](https://www.google.com/search?q=https://github.com/ogiusek/relay).

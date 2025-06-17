@@ -7,17 +7,19 @@ import (
 	"github.com/ogiusek/relay"
 )
 
+func afterPanic() {
+	print("\033[1A") // go 1 line up
+	print("\033[2K") // clear line
+}
+
 func TestDefaultHandler(t *testing.T) {
 	type EgReq struct{ relay.Req[int] }
 
 	{
-		var r, err = relay.TryNewRelay(relay.NewConfigBuilder().Build())
-		if err != nil {
-			t.Errorf("%s\n", err.Error())
-		}
+		r := relay.NewBuilder().Build()
 
 		var req = EgReq{}
-		_, err = relay.Handle(r, req)
+		_, err := relay.Handle(r, req)
 		if err != relay.ErrHandlerNotFound {
 			t.Errorf("unexpected error.\ngot %s\nexpected %s\n", err.Error(), relay.ErrHandlerNotFound.Error())
 		}
@@ -25,16 +27,12 @@ func TestDefaultHandler(t *testing.T) {
 
 	{
 		var customErr = errors.New("")
-		r, err := relay.TryNewRelay(relay.NewConfigBuilder().
+		r := relay.NewBuilder().
 			DefaultHandler(func(req any) (relay.Res, error) { return nil, customErr }).
-			Build(),
-		)
-		if err != nil {
-			t.Errorf("%s\n", err.Error())
-		}
+			Build()
 
 		req := EgReq{}
-		_, err = relay.Handle(r, req)
+		_, err := relay.Handle(r, req)
 		if err != customErr {
 			t.Errorf("unexpected error.\ngot %s\nexpected %s\n", err.Error(), customErr.Error())
 		}
@@ -47,20 +45,22 @@ func TestRegisteringTwice(t *testing.T) {
 		return 0, nil
 	}
 
-	r, err := relay.TryNewRelay(relay.NewConfigBuilder().Build())
-	if err != nil {
-		t.Errorf("%s\n", err.Error())
-	}
-	if err := relay.TryRegister(r, handler); err != nil {
-		t.Errorf("unexpected error %s\n", err.Error())
-	}
-	if err := relay.TryRegister(r, handler); err != relay.ErrHandlerAlreadyExists {
-		t.Errorf("unexpected error %s\nexpected %s\n", err.Error(), relay.ErrHandlerAlreadyExists)
-	}
+	t.Run("panics", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r != nil {
+				afterPanic()
+			} else {
+				t.Errorf("relay do not panics when handler is registered twice")
+			}
+		}()
+		relay.NewBuilder().
+			Wrap(func(b relay.Builder) relay.Builder { return relay.Register(b, handler) }).
+			Wrap(func(b relay.Builder) relay.Builder { return relay.Register(b, handler) }).
+			Build()
+	})
 }
 
 func TestHandler(t *testing.T) {
-	r := relay.NewRelay(relay.NewConfigBuilder().Build())
 	type EgReq struct {
 		relay.Req[int]
 		EgArr []int // arrays are not composable
@@ -68,13 +68,16 @@ func TestHandler(t *testing.T) {
 	req := EgReq{}
 	expectedRes := 10
 	handler := func(req EgReq) (int, error) { return expectedRes, nil }
-	relay.Register(r, handler)
 
 	type EgReq2 struct{ relay.Req[int] }
 	req2 := EgReq2{}
 	expectedRes2 := 11
 	handler2 := func(req EgReq2) (int, error) { return expectedRes2, nil }
-	relay.Register(r, handler2)
+
+	r := relay.NewBuilder().
+		Wrap(func(b relay.Builder) relay.Builder { return relay.Register(b, handler) }).
+		Wrap(func(b relay.Builder) relay.Builder { return relay.Register(b, handler2) }).
+		Build()
 
 	res, err := relay.Handle(r, req)
 	if res != expectedRes {
