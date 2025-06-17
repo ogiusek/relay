@@ -1,3 +1,3 @@
-module github.com/ogiusek/relay/v2
+module github.com/ogiusek/relay
 
 go 1.24.3
