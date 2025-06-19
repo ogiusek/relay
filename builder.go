@@ -7,7 +7,7 @@ import (
 
 type Builder struct {
 	valid bool
-	r     relay
+	r     *relay
 }
 
 var (
@@ -19,7 +19,7 @@ var (
 func NewBuilder() Builder {
 	return Builder{
 		valid: true,
-		r: relay{
+		r: &relay{
 			handlers:       map[any]any{},
 			defaultHandler: func(a any) (Res, error) { return nil, ErrHandlerNotFound },
 		},
@@ -65,6 +65,6 @@ func (b Builder) Build() Relay {
 	if !b.valid {
 		panic(fmt.Sprintf("%s\n", ErrDidntUseCtor.Error()))
 	}
-	r := b.r
+	r := *b.r
 	return &r
 }
