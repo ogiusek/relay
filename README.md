@@ -11,6 +11,7 @@ The `relay` package provides a robust and flexible mechanism for decoupling comm
   * **Explicit Registration:** Forces clear definition of how requests are handled.
   * **Default Handler:** Provides a fallback for unhandled request types.
   * **Composable Builder:** Allows for flexible and chained configuration.
+  * **Middlewares:** Allows registering middlewares (`Builder.RegisterMiddleware`)
 
 ## Installation
 
@@ -88,9 +89,9 @@ func main() {
 			return relay.Register(b, handler)
 		}).
 		// Set a default handler for requests without a specific handler
-		DefaultHandler(func(req any) (relay.Res, error) {
-			fmt.Printf("No handler found for request type: %T\n", req)
-			return nil, ErrCustomError
+		DefaultHandler(func(ctx relay.AnyContext) {
+			fmt.Printf("No handler found for request type: %T\n", ctx.Req())
+			ctx.SetErr(ErrCustomError)
 		}).
 		Build()
 
@@ -137,10 +138,10 @@ func main() {
 
     ```go
     builder := relay.NewBuilder().
-        DefaultHandler(func(req any) (relay.Res, error) {
-            fmt.Printf("Fallback for: %T\n", req)
-            return nil, errors.New("no specific handler")
-        })
+		DefaultHandler(func(req any) (relay.Res, error) {
+			fmt.Printf("No handler found for request type: %T\n", req)
+			return nil, ErrCustomError
+		}).
     ```
 
   * **`Register[Request Req[Response], Response any](b Builder, handler Handler[Request, Response]) Builder`**: Registers a handler for a specific request type. This function panics if:
@@ -171,6 +172,7 @@ The `relay` package defines the following errors:
   * **`ErrDidntUseCtor`**: Indicates that a `Builder` method was called on an uninitialized `Builder` instance (i.e., `NewBuilder()` was not used).
   * **`ErrHandlerAlreadyExists`**: Signifies an attempt to register a handler for a request type that already has a handler.
   * **`ErrHandlerNotFound`**: Returned by the default handler when no specific handler is found for a given request.
+  * **`ErrInvalidType`**: Returned by to middleware when wrong type is set.
 
 It's important to note that `Register` and `Build` methods can `panic` under certain conditions. This design choice forces the client to define the `Relay` upfront and correctly, ensuring a predictable and stable state at runtime.
 
