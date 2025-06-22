@@ -5,8 +5,9 @@ import (
 )
 
 type relay struct {
-	handlers       map[any]any
-	defaultHandler DefaultHandler
+	handlers          map[any]any
+	middlewareHandler MiddlewareHandler
+	defaultHandler    DefaultHandler
 }
 
 type Relay *relay
@@ -17,15 +18,21 @@ func requestKey[Request Req[Response], Response any]() any {
 
 func Handle[Request Req[Response], Response any](
 	r *relay,
-	request Request,
+	req Request,
 ) (Response, error) {
+	ctx := NewContext(req)
 	key := requestKey[Request]()
 	rawHandler, ok := r.handlers[key]
-	if !ok {
-		rawRes, err := r.defaultHandler(request)
-		res, _ := rawRes.(Response)
-		return res, err
-	}
-	handler := rawHandler.(Handler[Request, Response])
-	return handler(request)
+	anyCtx := ctx.Any()
+	r.middlewareHandler(anyCtx, func() {
+		if !ok {
+			r.defaultHandler(anyCtx)
+			return
+		}
+		handler := rawHandler.(Handler[Request, Response])
+		res, err := handler(ctx.Req())
+		ctx.SetRes(res)
+		ctx.SetErr(err)
+	})
+	return ctx.Res(), ctx.Err()
 }

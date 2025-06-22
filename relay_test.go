@@ -28,7 +28,7 @@ func TestDefaultHandler(t *testing.T) {
 	{
 		var customErr = errors.New("")
 		r := relay.NewBuilder().
-			DefaultHandler(func(req any) (relay.Res, error) { return nil, customErr }).
+			DefaultHandler(func(req relay.AnyContext) { req.SetErr(customErr) }).
 			Build()
 
 		req := EgReq{}
