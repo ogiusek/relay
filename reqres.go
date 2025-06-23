@@ -34,6 +34,7 @@ type DefaultHandler func(ctx AnyContext)
 type MiddlewareHandler func(ctx AnyContext, next func())
 
 type Context[Request Req[Response], Response Res] interface {
+	SetReq(Request)
 	Req() Request
 
 	SetRes(Response)
@@ -54,6 +55,7 @@ func NewContext[Request Req[Response], Response Res](req Request) Context[Reques
 	return &context[Request, Response]{req: req}
 }
 
+func (ctx *context[Request, Response]) SetReq(req Request)  { ctx.req = req }
 func (ctx *context[Request, Response]) Req() Request        { return ctx.req }
 func (ctx *context[Request, Response]) SetRes(res Response) { ctx.res = res }
 func (ctx *context[Request, Response]) Res() Response       { return ctx.res }
@@ -61,6 +63,14 @@ func (ctx *context[Request, Response]) SetErr(err error)    { ctx.err = err }
 func (ctx *context[Request, Response]) Err() error          { return ctx.err }
 func (ctx *context[Request, Response]) Any() AnyContext {
 	return anyContext{
+		setReq: func(rawReq any) error {
+			req, ok := rawReq.(Request)
+			if !ok {
+				return ErrInvalidType
+			}
+			ctx.req = req
+			return nil
+		},
 		req: func() any { return ctx.req },
 		setRes: func(rawRes any) error {
 			res, ok := rawRes.(Response)
@@ -78,6 +88,7 @@ func (ctx *context[Request, Response]) Any() AnyContext {
 
 type AnyContext interface {
 	Req() any
+	SetReq(any) error
 
 	// can return type errors
 	SetRes(any) error
@@ -88,6 +99,7 @@ type AnyContext interface {
 }
 
 type anyContext struct {
+	setReq func(any) error
 	req    func() any
 	setRes func(any) error
 	res    func() any
@@ -95,6 +107,7 @@ type anyContext struct {
 	err    func() error
 }
 
+func (ctx anyContext) SetReq(req any) error { return ctx.setReq(req) }
 func (ctx anyContext) Req() any             { return ctx.req() }
 func (ctx anyContext) SetRes(res any) error { return ctx.setRes(res) }
 func (ctx anyContext) Res() any             { return ctx.res() }
