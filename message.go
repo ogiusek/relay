@@ -4,6 +4,7 @@ package relay
 
 type Message interface{}
 
+type AnyMessageHandler func(Message) error
 type MessageHandler[Mess Message] func(Mess)
 type DefaultMessageHandler func(ctx AnyMessageCtx)
 type MiddlewareMessageHandler func(ctx AnyMessageCtx, next func())
@@ -27,7 +28,6 @@ func (mess *messageCtx[Mess]) Message() Mess           { return mess.message }
 func (mess *messageCtx[Mess]) SetMessage(message Mess) { mess.message = message }
 func (mess *messageCtx[Mess]) Any() AnyMessageCtx {
 	return NewAnyMessageCtx(
-		func() Message { return mess.message },
 		func(m Message) error {
 			message, ok := m.(Mess)
 			if !ok {
@@ -36,6 +36,7 @@ func (mess *messageCtx[Mess]) Any() AnyMessageCtx {
 			mess.message = message
 			return nil
 		},
+		func() Message { return mess.message },
 	)
 }
 
@@ -51,8 +52,8 @@ type anyMessageCtx struct {
 }
 
 func NewAnyMessageCtx(
-	message func() Message,
 	setMessage func(Message) error,
+	message func() Message,
 ) AnyMessageCtx {
 	return anyMessageCtx{
 		message:    message,

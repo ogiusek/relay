@@ -1,11 +1,5 @@
 package relay
 
-import "errors"
-
-var (
-	ErrInvalidType error = errors.New("invalid type")
-)
-
 // e.g.
 //
 //	type EgRes struct {
@@ -29,6 +23,7 @@ type Req[Response Res] interface {
 
 // everything below should be treated as if it had prefix "Request"
 
+type AnyHandler func(any) (any, error)
 type Handler[Request Req[Response], Response any] func(Request) (Response, error)
 type DefaultHandler func(ctx AnyContext)
 type MiddlewareHandler func(ctx AnyContext, next func())
@@ -64,8 +59,8 @@ func (ctx *context[Request, Response]) Res() Response       { return ctx.res }
 func (ctx *context[Request, Response]) SetErr(err error)    { ctx.err = err }
 func (ctx *context[Request, Response]) Err() error          { return ctx.err }
 func (ctx *context[Request, Response]) Any() AnyContext {
-	return anyContext{
-		setReq: func(rawReq any) error {
+	return NewAnyContext(
+		func(rawReq any) error {
 			req, ok := rawReq.(Request)
 			if !ok {
 				return ErrInvalidType
@@ -73,8 +68,8 @@ func (ctx *context[Request, Response]) Any() AnyContext {
 			ctx.req = req
 			return nil
 		},
-		req: func() any { return ctx.req },
-		setRes: func(rawRes any) error {
+		func() any { return ctx.req },
+		func(rawRes any) error {
 			res, ok := rawRes.(Response)
 			if !ok {
 				return ErrInvalidType
@@ -82,10 +77,10 @@ func (ctx *context[Request, Response]) Any() AnyContext {
 			ctx.res = res
 			return nil
 		},
-		res:    func() any { return ctx.res },
-		setErr: ctx.SetErr,
-		err:    ctx.Err,
-	}
+		func() any { return ctx.res },
+		ctx.SetErr,
+		ctx.Err,
+	)
 }
 
 //
@@ -109,6 +104,25 @@ type anyContext struct {
 	res    func() any
 	setErr func(error)
 	err    func() error
+}
+
+func NewAnyContext(
+	setReq func(any) error,
+	req func() any,
+	setRes func(any) error,
+	res func() any,
+	setErr func(error),
+	err func() error,
+) AnyContext {
+	return anyContext{
+		setReq: setReq,
+		req:    req,
+		setRes: setRes,
+		res:    res,
+		setErr: setErr,
+		err:    err,
+	}
+
 }
 
 func (ctx anyContext) SetReq(req any) error { return ctx.setReq(req) }

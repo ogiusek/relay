@@ -24,8 +24,8 @@ func NewBuilder() Builder {
 		middlewares:        &[]MiddlewareHandler{},
 		messageMiddlewares: &[]MiddlewareMessageHandler{},
 		r: &relay{
-			handlers:        map[any]any{},
-			messageHandlers: map[any]any{},
+			handlers:        map[any]AnyHandler{},
+			messageHandlers: map[any]AnyMessageHandler{},
 			defaultHandler: func(req AnyContext) {
 				req.SetErr(ErrHandlerNotFound)
 			},
@@ -82,7 +82,16 @@ func MessageRegister[Mess Message](
 	}
 
 	// reigster
-	b.r.messageHandlers[key] = handler
+	h := handler
+	// b.r.messageHandlers[key] = handler
+	b.r.messageHandlers[key] = func(m Message) error {
+		mess, ok := m.(Mess)
+		if !ok {
+			return ErrInvalidType
+		}
+		h(mess)
+		return nil
+	}
 	return b
 }
 
@@ -101,7 +110,15 @@ func Register[Request Req[Response], Response any](
 	}
 
 	// reigster
-	b.r.handlers[key] = handler
+	h := handler
+	b.r.handlers[key] = func(a any) (any, error) {
+		req, ok := a.(Request)
+		if !ok {
+			var res Response
+			return res, ErrInvalidType
+		}
+		return h(req)
+	}
 	return b
 }
 
