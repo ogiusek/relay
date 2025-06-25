@@ -6,9 +6,10 @@ import (
 )
 
 type Builder struct {
-	valid       bool
-	middlewares *[]MiddlewareHandler
-	r           *relay
+	valid              bool
+	middlewares        *[]MiddlewareHandler
+	messageMiddlewares *[]MiddlewareMessageHandler
+	r                  *relay
 }
 
 var (
@@ -19,13 +20,16 @@ var (
 
 func NewBuilder() Builder {
 	return Builder{
-		valid:       true,
-		middlewares: &[]MiddlewareHandler{},
+		valid:              true,
+		middlewares:        &[]MiddlewareHandler{},
+		messageMiddlewares: &[]MiddlewareMessageHandler{},
 		r: &relay{
-			handlers: map[any]any{},
+			handlers:        map[any]any{},
+			messageHandlers: map[any]any{},
 			defaultHandler: func(req AnyContext) {
 				req.SetErr(ErrHandlerNotFound)
 			},
+			defaultMessageHandler: func(ctx AnyMessageCtx) {},
 		},
 	}
 }
@@ -37,6 +41,14 @@ func (b Builder) Wrap(wrapped func(Builder) Builder) Builder {
 	return wrapped(b)
 }
 
+func (b Builder) DefaultMessageHandler(handler DefaultMessageHandler) Builder {
+	if !b.valid {
+		panic(fmt.Sprintf("%s\n", ErrDidntUseCtor.Error()))
+	}
+	b.r.defaultMessageHandler = handler
+	return b
+}
+
 func (b Builder) DefaultHandler(handler DefaultHandler) Builder {
 	if !b.valid {
 		panic(fmt.Sprintf("%s\n", ErrDidntUseCtor.Error()))
@@ -45,12 +57,35 @@ func (b Builder) DefaultHandler(handler DefaultHandler) Builder {
 	return b
 }
 
+func (b Builder) RegisterMessageMiddleware(handler MiddlewareMessageHandler) Builder {
+	(*b.messageMiddlewares) = append((*b.messageMiddlewares), handler)
+	return b
+}
+
 func (b Builder) RegisterMiddleware(handler MiddlewareHandler) Builder {
 	(*b.middlewares) = append((*b.middlewares), handler)
 	return b
 }
 
-// can panic. if you do not want to panic use TryRegister
+func MessageRegister[Mess Message](
+	b Builder,
+	handler MessageHandler[Mess],
+) Builder {
+	if !b.valid {
+		panic(fmt.Sprintf("%s\n", ErrDidntUseCtor.Error()))
+	}
+	key := messageKey[Mess]()
+
+	// verify do handler exists
+	if _, ok := b.r.handlers[key]; ok {
+		panic(fmt.Sprintf("%s\n", ErrHandlerAlreadyExists.Error()))
+	}
+
+	// reigster
+	b.r.messageHandlers[key] = handler
+	return b
+}
+
 func Register[Request Req[Response], Response any](
 	b Builder,
 	handler Handler[Request, Response],
@@ -86,6 +121,18 @@ func (b Builder) Build() Relay {
 		}
 	}
 	b.r.middlewareHandler = m
+	var mM MiddlewareMessageHandler = func(ctx AnyMessageCtx, next func()) { next() }
+	for i, middleware := range *b.messageMiddlewares {
+		if i == 0 {
+			mM = middleware
+			continue
+		}
+		wrappedM := mM
+		mM = func(req AnyMessageCtx, next func()) {
+			middleware(req, func() { wrappedM(req, next) })
+		}
+	}
+	b.r.middlewareMessageHandler = mM
 	r := *b.r
 	return &r
 }

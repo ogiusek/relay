@@ -27,11 +27,13 @@ type Req[Response Res] interface {
 	ResponseType() Response
 }
 
+// everything below should be treated as if it had prefix "Request"
+
 type Handler[Request Req[Response], Response any] func(Request) (Response, error)
-
 type DefaultHandler func(ctx AnyContext)
-
 type MiddlewareHandler func(ctx AnyContext, next func())
+
+//
 
 type Context[Request Req[Response], Response Res] interface {
 	SetReq(Request)
@@ -85,6 +87,8 @@ func (ctx *context[Request, Response]) Any() AnyContext {
 		err:    ctx.Err,
 	}
 }
+
+//
 
 type AnyContext interface {
 	Req() any
